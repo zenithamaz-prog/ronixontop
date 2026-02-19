@@ -1,13 +1,36 @@
 local Module = {}
 
--- Services
+-- Services - with error handling
 local cloneref = cloneref or function(o) return o end
-local HttpService = cloneref(game:GetService("HttpService"))
-local TweenService = cloneref(game:GetService("TweenService"))
-local TextService = cloneref(game:GetService("TextService"))
-local UserInputService = cloneref(game:GetService("UserInputService"))
-local Players = cloneref(game:GetService("Players"))
-local MarketplaceService = cloneref(game:GetService("MarketplaceService"))
+
+local function SafeGetService(serviceName)
+    local success, result = pcall(function()
+        return cloneref(game:GetService(serviceName))
+    end)
+    if success and result then
+        return result
+    end
+    -- Fallback without cloneref
+    success, result = pcall(function()
+        return game:GetService(serviceName)
+    end)
+    return success and result or nil
+end
+
+local HttpService = SafeGetService("HttpService")
+local TweenService = SafeGetService("TweenService")
+local TextService = SafeGetService("TextService")
+local UserInputService = SafeGetService("UserInputService")
+local Players = SafeGetService("Players")
+local MarketplaceService = SafeGetService("MarketplaceService")
+
+-- Check if services loaded
+if not HttpService then
+    warn("[Ronix Module] HttpService not available")
+end
+if not TweenService then
+    warn("[Ronix Module] TweenService not available")
+end
 
 -- Exploit functions
 local getgenv = getgenv or function() return {} end
@@ -162,6 +185,9 @@ Module.TextToKey = {}
 
 -- Helper functions
 local function createTween(obj, props, duration, style, direction)
+    if not TweenService then return nil end
+    if not obj then return nil end
+    
     local tweenInfo = TweenInfo.new(
         duration or 0.6,
         style or Enum.EasingStyle.Exponential,
@@ -171,6 +197,7 @@ local function createTween(obj, props, duration, style, direction)
 end
 
 local function escapeRichText(str)
+    if type(str) ~= "string" then return "" end
     return str:gsub("&", "&amp;"):gsub("<", "&lt;"):gsub(">", "&gt;")
 end
 
@@ -236,6 +263,7 @@ local httpCache = {}
 local lastApiCall = 0
 
 local function httpGet(url, bypassCache)
+    if not HttpService then return nil end
     if not bypassCache and httpCache[url] then
         return httpCache[url]
     end
@@ -298,16 +326,19 @@ end
 
 function Module.connect(obj, callback)
     if not obj then return end
-    if obj:IsA("GuiButton") then
-        local signal = obj.Activated or obj.MouseButton1Click
-        signal:Connect(callback)
-    else
-        obj.InputBegan:Connect(function(input)
-            local valid = input.UserInputType == Enum.UserInputType.MouseButton1
-                or input.UserInputType == Enum.UserInputType.Touch
-            if valid then callback() end
-        end)
-    end
+    local success = pcall(function()
+        if obj:IsA("GuiButton") then
+            local signal = obj.Activated or obj.MouseButton1Click
+            signal:Connect(callback)
+        else
+            obj.InputBegan:Connect(function(input)
+                local valid = input.UserInputType == Enum.UserInputType.MouseButton1
+                    or input.UserInputType == Enum.UserInputType.Touch
+                if valid then callback() end
+            end)
+        end
+    end)
+    return success
 end
 
 function Module.buildReverseLookup()
@@ -421,6 +452,7 @@ function Module.tween(obj, props, duration)
 end
 
 function Module.fadeIn(frame, duration)
+    if not frame then return end
     for _, obj in frame:GetDescendants() do
         if obj:IsA("GuiObject") then
             local props = {}
@@ -446,42 +478,56 @@ end
 -- FIXED: Proper page switching with executor element handling
 function Module.switch(oldPage, newPage, buttons, activeBtn, executorElements)
     -- Hide all buttons first
-    for _, btn in pairs(buttons) do
-        if btn and btn.Name ~= "ProfileButton" then
-            btn.ImageTransparency = 1
-            local stroke = btn:FindFirstChild("UIStroke")
-            if stroke then stroke.Transparency = 1 end
+    if buttons then
+        for _, btn in pairs(buttons) do
+            if btn and btn.Name ~= "ProfileButton" then
+                pcall(function()
+                    btn.ImageTransparency = 1
+                    local stroke = btn:FindFirstChild("UIStroke")
+                    if stroke then stroke.Transparency = 1 end
+                end)
+            end
         end
     end
     
     -- Show active button
     if activeBtn and activeBtn.Name ~= "ProfileButton" then
-        activeBtn.ImageTransparency = 0.6
-        local stroke = activeBtn:FindFirstChild("UIStroke")
-        if stroke then stroke.Transparency = 0.6 end
+        pcall(function()
+            activeBtn.ImageTransparency = 0.6
+            local stroke = activeBtn:FindFirstChild("UIStroke")
+            if stroke then stroke.Transparency = 0.6 end
+        end)
     end
     
     -- Hide old page
     if oldPage then
-        oldPage.Visible = false
+        pcall(function()
+            oldPage.Visible = false
+        end)
         
         -- FIXED: Hide executor-specific elements when leaving executor page
         if executorElements and oldPage.Name == "Executor" then
             for _, elem in pairs(executorElements) do
-                if elem then elem.Visible = false end
+                if elem then
+                    pcall(function() elem.Visible = false end)
+                end
             end
         end
     end
     
     -- Show new page
     if newPage then
-        newPage.Visible = true
-        newPage.Position = UDim2.new(0, 0, 0, 0)
+        pcall(function()
+            newPage.Visible = true
+            newPage.Position = UDim2.new(0, 0, 0, 0)
+        end)
         
         -- FIXED: Show executor-specific elements when entering executor page
         if executorElements and newPage.Name == "Executor" then
             for _, elem in pairs(executorElements) do
-                if elem then elem.Visible = true end
+                if elem then
+                    pcall(function() elem.Visible = true end)
+                end
             end
         end
     end
@@ -601,6 +647,9 @@ function Module.setupEditor(scrollContainer, codeBox, lineLabel)
         
         local lineText = textBefore:sub(lastNewline + 1)
         local fontSize = Module.currentSize
+        
+        if not TextService then return end
+        
         local textWidth = TextService:GetTextSize(lineText, fontSize, EDITOR_FONT, Vector2.new(999999, 999999)).X
         local yPos = lineCount * fontSize * LINE_HEIGHT
         
@@ -620,6 +669,9 @@ function Module.setupEditor(scrollContainer, codeBox, lineLabel)
         end
         
         local fontSize = Module.currentSize
+        
+        if not TextService then return end
+        
         local textBounds = TextService:GetTextSize(text, fontSize, EDITOR_FONT, Vector2.new(999999, 999999))
         local contentHeight = math.max((lineCount + 1) * fontSize * LINE_HEIGHT, textBounds.Y) + 50
         local minWidth = scrollContainer.AbsoluteSize.X - LINE_GAP
@@ -674,15 +726,17 @@ function Module.setupEditor(scrollContainer, codeBox, lineLabel)
     codeBox.Focused:Connect(updateCursor)
     codeBox.FocusLost:Connect(function() cursor.Visible = false end)
     
-    UserInputService.InputBegan:Connect(function(input)
-        if not codeBox:IsFocused() then return end
-        local ctrlHeld = UserInputService:IsKeyDown(Enum.KeyCode.LeftControl)
-            or UserInputService:IsKeyDown(Enum.KeyCode.RightControl)
-        if input.KeyCode == Enum.KeyCode.V and ctrlHeld then
-            task.wait(0.05)
-            updateEditor()
-        end
-    end)
+    if UserInputService then
+        UserInputService.InputBegan:Connect(function(input)
+            if not codeBox:IsFocused() then return end
+            local ctrlHeld = UserInputService:IsKeyDown(Enum.KeyCode.LeftControl)
+                or UserInputService:IsKeyDown(Enum.KeyCode.RightControl)
+            if input.KeyCode == Enum.KeyCode.V and ctrlHeld then
+                task.wait(0.05)
+                updateEditor()
+            end
+        end)
+    end
     
     -- Initial update
     updateEditor()
@@ -707,6 +761,7 @@ function Module.exec(code)
 end
 
 function Module.paste(box)
+    if not box then return end
     local success, content = pcall(getclipboard)
     if success and content and content ~= "" then
         local cursorPos = box.CursorPosition
@@ -720,12 +775,14 @@ function Module.paste(box)
 end
 
 function Module.clear(box)
-    box.Text = ""
+    if box then box.Text = "" end
 end
 
 -- File operations
 function Module.save(filename, data)
     if not data then return false end
+    if not HttpService then return false end
+    
     local path = DATA_PATH .. "/" .. filename
     local success = pcall(function()
         local jsonData = HttpService:JSONEncode(data)
@@ -735,6 +792,8 @@ function Module.save(filename, data)
 end
 
 function Module.load(filename)
+    if not HttpService then return nil end
+    
     local path = DATA_PATH .. "/" .. filename
     local success, result = pcall(function()
         local content = readFile(path)
@@ -927,21 +986,31 @@ end
 
 -- UI animations
 function Module.open(sidebar, main, currentPage)
+    if not TweenService then return end
     if not currentPage then return end
-    currentPage.Visible = true
-    local tweenInfo = TweenInfo.new(0.6, Enum.EasingStyle.Exponential, Enum.EasingDirection.Out)
-    TweenService:Create(sidebar, tweenInfo, {Position = UDim2.new(0.048, 0, 0.075, 0)}):Play()
-    TweenService:Create(main, tweenInfo, {Position = UDim2.new(0.323, 0, 0.076, 0)}):Play()
+    
+    pcall(function()
+        currentPage.Visible = true
+        local tweenInfo = TweenInfo.new(0.6, Enum.EasingStyle.Exponential, Enum.EasingDirection.Out)
+        TweenService:Create(sidebar, tweenInfo, {Position = UDim2.new(0.048, 0, 0.075, 0)}):Play()
+        TweenService:Create(main, tweenInfo, {Position = UDim2.new(0.323, 0, 0.076, 0)}):Play()
+    end)
 end
 
 function Module.close(sidebar, main, pages)
-    local tweenInfo = TweenInfo.new(0.5, Enum.EasingStyle.Exponential, Enum.EasingDirection.In)
-    TweenService:Create(sidebar, tweenInfo, {Position = UDim2.new(-1.5, 0, 0.075, 0)}):Play()
-    TweenService:Create(main, tweenInfo, {Position = UDim2.new(3, 0, 0.076, 0)}):Play()
-    task.delay(0.5, function()
-        for _, p in pairs(pages) do
-            if p then p.Visible = false end
-        end
+    if not TweenService then return end
+    
+    pcall(function()
+        local tweenInfo = TweenInfo.new(0.5, Enum.EasingStyle.Exponential, Enum.EasingDirection.In)
+        TweenService:Create(sidebar, tweenInfo, {Position = UDim2.new(-1.5, 0, 0.075, 0)}):Play()
+        TweenService:Create(main, tweenInfo, {Position = UDim2.new(3, 0, 0.076, 0)}):Play()
+        task.delay(0.5, function()
+            for _, p in pairs(pages) do
+                if p then
+                    pcall(function() p.Visible = false end)
+                end
+            end
+        end)
     end)
 end
 
@@ -950,6 +1019,7 @@ function Module.unlockFPS()
 end
 
 function Module.getGameInfo()
+    if not MarketplaceService then return nil end
     return MarketplaceService:GetProductInfo(game.PlaceId)
 end
 
@@ -958,13 +1028,21 @@ function Module.notify(title, msg)
 end
 
 function Module.showPopup(popup, frame)
-    if popup then popup.Visible = true end
-    if frame then frame.Visible = true end
+    if popup then
+        pcall(function() popup.Visible = true end)
+    end
+    if frame then
+        pcall(function() frame.Visible = true end)
+    end
 end
 
 function Module.hidePopup(popup, frame)
-    if frame then frame.Visible = false end
-    if popup then popup.Visible = false end
+    if frame then
+        pcall(function() frame.Visible = false end)
+    end
+    if popup then
+        pcall(function() popup.Visible = false end)
+    end
 end
 
 return Module
